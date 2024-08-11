@@ -24,7 +24,10 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/external/glfw/CMakeLists.txt")
     message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+find_package(OpenGL)
+
 add_subdirectory(external/glfw)
+add_subdirectory(external/imgui)
 
 # Extract all source files inside the directory src/
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS "src/*.cpp" "src/*.c" "src/*.h")
@@ -35,7 +38,7 @@ add_executable("${PROJECT_NAME}"
 	${SOURCE_FILES}
 )
 
-target_link_libraries("${PROJECT_NAME}" PUBLIC glfw)
+target_link_libraries("${PROJECT_NAME}" PUBLIC glfw imgui)
 
 # Set as start project
 set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
