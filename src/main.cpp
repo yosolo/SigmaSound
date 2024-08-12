@@ -196,7 +196,9 @@
 //    return 0;
 //}
 
-ma_uint32 read_and_mix_pcm_frames_f32(ma_decoder* pDecoder, float* pOutputF32, ma_uint32 frameCount)
+ma_node_graph nodeGraph;
+
+ma_uint32 read_and_mix_pcm_frames_f32(ma_device* pDevice, ma_decoder* pDecoder, float* pOutputF32, ma_uint32 frameCount)
 {
     /*
     The way mixing works is that we just read into a temporary buffer, then take the contents of that buffer and mix it with the
@@ -220,6 +222,7 @@ ma_uint32 read_and_mix_pcm_frames_f32(ma_decoder* pDecoder, float* pOutputF32, m
         }
 
         //get chunk of data into "temp"
+        //result = ma_node_graph_read_pcm_frames(&nodeGraph, temp, framesToReadThisIteration, &framesReadThisIteration);
         result = ma_decoder_read_pcm_frames(pDecoder, temp, framesToReadThisIteration, &framesReadThisIteration);
         if (result != MA_SUCCESS || framesReadThisIteration == 0) {
             break;
@@ -258,12 +261,17 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
     for (int i = 0; i < pDecoderList.size(); i++)
     {
-        read_and_mix_pcm_frames_f32(&pDecoderList[i], pOutputF32, frameCount);
+        read_and_mix_pcm_frames_f32(pDevice, &pDecoderList[i], pOutputF32, frameCount);
     }
-
 
     (void)pInput;
 }
+
+typedef struct
+{
+    ma_data_source_node node;   /* If you make this the first member, you can pass a pointer to this struct into any ma_node_* API and it will "Just Work". */
+    ma_decoder decoder;
+} sound_node;
 
 struct DeviceManager
 {
@@ -274,6 +282,11 @@ struct DeviceManager
 
     std::vector<ma_decoder> pDecoders1;
     std::vector<ma_decoder> pDecoders2;
+
+    //ma_node_graph node_graph;
+
+    std::vector<sound_node> nodes1;
+    std::vector<sound_node> nodes2;
 
     DeviceManager()
     {
@@ -299,7 +312,7 @@ struct DeviceManager
         }
 
         ma_device_config config_device1 = ma_device_config_init(ma_device_type_playback);
-        config_device1.playback.pDeviceID = &pPlaybackInfos[3].id;
+        config_device1.playback.pDeviceID = &pPlaybackInfos[4].id;
         config_device1.playback.format = ma_format_f32;   // Set to ma_format_unknown to use the device's native format.
         config_device1.playback.channels = 2;               // Set to 0 to use the device's native channel count.
         config_device1.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
@@ -322,6 +335,10 @@ struct DeviceManager
 
         ma_device_stop(&device1);
         ma_device_stop(&device2);
+
+        ma_node_graph_config nodeGraphConfig = ma_node_graph_config_init(2);
+
+        ma_node_graph_init(&nodeGraphConfig, NULL, &nodeGraph);
     }
 
     ~DeviceManager()
@@ -362,6 +379,13 @@ struct DeviceManager
             printf("Failed to add sound in DeviceManager struct");
             return;
         }
+
+        //sound_node a;
+        //a.decoder = decoder1;
+        //ma_data_source_node_config dataSourceNodeConfig = ma_data_source_node_config_init(&a.decoder);
+        //ma_data_source_node_init(&nodeGraph, &dataSourceNodeConfig, NULL, &a.node);
+        //ma_node_attach_output_bus(&a.node, 0, ma_node_graph_get_endpoint(&nodeGraph), 0);
+
         pDecoders1.push_back(decoder1);
         pDecoders2.push_back(decoder2);
     }
@@ -371,6 +395,8 @@ int main()
 {
     DeviceManager device;
     device.start();
+    device.addSound("eple.mp3");
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     device.addSound("eple.mp3");
 
     while (1)
