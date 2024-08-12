@@ -196,13 +196,6 @@
 //    return 0;
 //}
 
-#define SAMPLE_FORMAT   ma_format_f32
-#define CHANNEL_COUNT   2
-#define SAMPLE_RATE     48000
-
-//std::vector<ma_decoder> pDecoders1;
-//std::vector<ma_decoder> pDecoders2;
-
 ma_uint32 read_and_mix_pcm_frames_f32(ma_decoder* pDecoder, float* pOutputF32, ma_uint32 frameCount)
 {
     /*
@@ -210,9 +203,11 @@ ma_uint32 read_and_mix_pcm_frames_f32(ma_decoder* pDecoder, float* pOutputF32, m
     contents of the output buffer by simply adding the samples together. You could also clip the samples to -1..+1, but I'm not
     doing that in this example.
     */
+    int channelCount = 2;
+
     ma_result result;
     float temp[4096];
-    ma_uint32 tempCapInFrames = ma_countof(temp) / CHANNEL_COUNT;
+    ma_uint32 tempCapInFrames = ma_countof(temp) / channelCount;//expected to have always stereo
     ma_uint32 totalFramesRead = 0;
 
     while (totalFramesRead < frameCount) {
@@ -231,8 +226,8 @@ ma_uint32 read_and_mix_pcm_frames_f32(ma_decoder* pDecoder, float* pOutputF32, m
         }
 
         /* Mix the frames together. */
-        for (iSample = 0; iSample < framesReadThisIteration * CHANNEL_COUNT; ++iSample) {
-            pOutputF32[totalFramesRead * CHANNEL_COUNT + iSample] += temp[iSample];
+        for (iSample = 0; iSample < framesReadThisIteration * channelCount; ++iSample) {
+            pOutputF32[totalFramesRead * channelCount + iSample] += temp[iSample];
         }
 
         totalFramesRead += (ma_uint32)framesReadThisIteration;
@@ -272,14 +267,37 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
 struct DeviceManager
 {
+    ma_context context;
+
     ma_device device1;
     ma_device device2;
 
     std::vector<ma_decoder> pDecoders1;
     std::vector<ma_decoder> pDecoders2;
 
-    DeviceManager(ma_device_info* pPlaybackInfos)
+    DeviceManager()
     {
+        if (ma_context_init(NULL, 0, NULL, &context) != MA_SUCCESS) 
+        {
+            printf("Failed to initialize devices in DeviceManager struct");
+            return;
+        }
+
+        ma_device_info* pPlaybackInfos;
+        ma_uint32 playbackCount;
+        ma_device_info* pCaptureInfos;
+        ma_uint32 captureCount;
+        if (ma_context_get_devices(&context, &pPlaybackInfos, &playbackCount, &pCaptureInfos, &captureCount) != MA_SUCCESS) {
+            printf("Failed to get physical devices from context in DeviceManager struct");
+            return;
+        }
+
+        // Loop over each device info and do something with it. Here we just print the name with their index. You may want
+        // to give the user the opportunity to choose which device they'd prefer.
+        for (ma_uint32 iDevice = 0; iDevice < playbackCount; iDevice += 1) {
+            printf("%d - %s\n", iDevice, pPlaybackInfos[iDevice].name);
+        }
+
         ma_device_config config_device1 = ma_device_config_init(ma_device_type_playback);
         config_device1.playback.pDeviceID = &pPlaybackInfos[3].id;
         config_device1.playback.format = ma_format_f32;   // Set to ma_format_unknown to use the device's native format.
@@ -351,87 +369,7 @@ struct DeviceManager
 
 int main()
 {
-    ma_context context;
-    if (ma_context_init(NULL, 0, NULL, &context) != MA_SUCCESS) {
-        return 1;
-    }
-
-    ma_device_info* pPlaybackInfos;
-    ma_uint32 playbackCount;
-    ma_device_info* pCaptureInfos;
-    ma_uint32 captureCount;
-    if (ma_context_get_devices(&context, &pPlaybackInfos, &playbackCount, &pCaptureInfos, &captureCount) != MA_SUCCESS) {
-        return 1;
-    }
-
-    // Loop over each device info and do something with it. Here we just print the name with their index. You may want
-    // to give the user the opportunity to choose which device they'd prefer.
-    for (ma_uint32 iDevice = 0; iDevice < playbackCount; iDevice += 1) {
-        printf("%d - %s\n", iDevice, pPlaybackInfos[iDevice].name);
-    }
-
-   // ma_decoder decoder;
-   // ma_decoder decoder2;
-   // if (ma_decoder_init_file("eple.mp3", NULL, &decoder) != MA_SUCCESS || 
-   //     ma_decoder_init_file("eple.mp3", NULL, &decoder2) != MA_SUCCESS)
-   // {
-   //     printf("Decoder");
-   //     return 0;
-   // }
-   // pDecoders1.push_back(decoder);
-   // pDecoders2.push_back(decoder2);
-//
-   // ma_device_config config_device1 = ma_device_config_init(ma_device_type_playback);
-   // config_device1.playback.pDeviceID = &pPlaybackInfos[3].id;
-   // config_device1.playback.format = ma_format_f32;   // Set to ma_format_unknown to use the device's native format.
-   // config_device1.playback.channels = 2;               // Set to 0 to use the device's native channel count.
-   // config_device1.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
-   // config_device1.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-   // config_device1.pUserData = &pDecoders1;   // Can be accessed from the device object (device.pUserData).
-//
-   // ma_device_config config_device2 = ma_device_config_init(ma_device_type_playback);
-   // config_device2.playback.pDeviceID = &pPlaybackInfos[0].id;
-   // config_device2.playback.format = ma_format_f32;   // Set to ma_format_unknown to use the device's native format.
-   // config_device2.playback.channels = 2;               // Set to 0 to use the device's native channel count.
-   // config_device2.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
-   // config_device2.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-   // config_device2.pUserData = &pDecoders2;   // Can be accessed from the device object (device.pUserData).
-//
-   // ma_device device1;
-   // ma_device device2;
-   // if (ma_device_init(NULL, &config_device1, &device1) != MA_SUCCESS || 
-   //     ma_device_init(NULL, &config_device2, &device2) != MA_SUCCESS) {
-   //     return -1;  // Failed to initialize the device.
-   // }
-//
-   // ma_device_stop(&device1);
-   // ma_device_stop(&device2);
-   // //ma_device_start(&device);     // The device is sleeping by default so you'll need to start it manually.
-//
-   // // Do something here. Probably your program's main loop.
-   // std::this_thread::sleep_for(std::chrono::seconds(1)); 
-   // ma_device_start(&device1);
-   // ma_device_start(&device2);
-   // //std::this_thread::sleep_for(std::chrono::seconds(3));
-   // //ma_device_stop(&device1);
-   // //ma_device_stop(&device2);
-   // //std::this_thread::sleep_for(std::chrono::seconds(1));
-   // //ma_device_start(&device1);
-   // //ma_device_start(&device2);
-
-   // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-   // ma_decoder decoder3;
-   // ma_decoder decoder4;
-   // ma_decoder_init_file("eple.mp3", NULL, &decoder3);
-   // ma_decoder_init_file("eple.mp3", NULL, &decoder4);
-   // pDecoders1.push_back(decoder3);
-   // pDecoders2.push_back(decoder4);
-   // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-   // //ma_device_stop(&device1);
-   // pDecoders1.erase(pDecoders1.begin() + 1);
-   // //ma_device_start(&device1);
-
-    DeviceManager device(pPlaybackInfos);
+    DeviceManager device;
     device.start();
     device.addSound("eple.mp3");
 
@@ -440,6 +378,5 @@ int main()
 
     }
 
-    ma_context_uninit(&context);
     return 0;
 }
