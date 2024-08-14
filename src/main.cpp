@@ -16,7 +16,7 @@
 /* Data Format */
 #define FORMAT              ma_format_f32   /* Must always be f32. */
 #define CHANNELS            2
-#define SAMPLE_RATE         48000
+#define SAMPLE_RATE         44100
 
 //namespace ImGui
 //{
@@ -227,6 +227,7 @@ struct DeviceManager
     ma_node_graph node_graph2;
 
     ma_splitter_node splitterNode;
+    ma_lpf_node      lpfNode;
 
     std::vector<sound_node*> nodes;
 
@@ -283,6 +284,9 @@ struct DeviceManager
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph1);
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph2);
 
+#define LPF_BIAS            0.9f    /* Higher values means more bias towards the low pass filter (the low pass filter will be more audible). Lower values means more bias towards the echo. Must be between 0 and 1. */
+#define LPF_CUTOFF_FACTOR   80      /* High values = more filter. */
+#define LPF_ORDER           8
 
         /* Splitter. */
         {
@@ -295,6 +299,22 @@ struct DeviceManager
         
             ma_node_attach_output_bus(&splitterNode, 0, ma_node_graph_get_endpoint(&node_graph1), 0);
             ma_node_attach_output_bus(&splitterNode, 1, ma_node_graph_get_endpoint(&node_graph2), 0);
+        }
+
+        /* Low Pass Filter. */
+        {
+            ma_lpf_node_config lpfNodeConfig = ma_lpf_node_config_init(CHANNELS, SAMPLE_RATE, SAMPLE_RATE / LPF_CUTOFF_FACTOR, LPF_ORDER);
+
+            if (ma_lpf_node_init(&node_graph1, &lpfNodeConfig, NULL, &lpfNode) != MA_SUCCESS) {
+                printf("ERROR: Failed to initialize low pass filter node.");
+                return;
+            }
+
+            /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
+            ma_node_attach_output_bus(&lpfNode, 0, &splitterNode, 0);
+
+            /* Set the volume of the low pass filter to make it more of less impactful. */
+            ma_node_set_output_bus_volume(&lpfNode, 0, LPF_BIAS);
         }
         
     }
@@ -341,7 +361,7 @@ struct DeviceManager
             return;
         }
         
-        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &splitterNode, 0) != MA_SUCCESS)
+        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &lpfNode, 0) != MA_SUCCESS)
         {
             printf("ERROR: Failed to attach in DeviceManager struct");
             return;
@@ -358,7 +378,6 @@ int main()
     device.addSound("afloat.mp3");
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     device.clear();
-
 
     while (1);
 
