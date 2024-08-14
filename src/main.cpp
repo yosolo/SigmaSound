@@ -207,84 +207,11 @@ typedef struct
     ma_decoder decoder;
 } sound_node;
 
-ma_node_graph nodeGraph;
-ma_splitter_node splitterNode;
-//std::vector<sound_node*> sound_nodes;
-//static sound_node* g_pSoundNodes;
-
-ma_uint32 read_and_mix_pcm_frames_f32(ma_device* pDevice, ma_decoder* pDecoder, float* pOutputF32, ma_uint32 frameCount)
-{
-    /*
-    The way mixing works is that we just read into a temporary buffer, then take the contents of that buffer and mix it with the
-    contents of the output buffer by simply adding the samples together. You could also clip the samples to -1..+1, but I'm not
-    doing that in this example.
-    */
-    int channelCount = 2;
-
-    ma_result result;
-    float temp[4096];
-    ma_uint32 tempCapInFrames = ma_countof(temp) / channelCount;//expected to have always stereo
-    ma_uint32 totalFramesRead = 0;
-
-    while (totalFramesRead < frameCount) {
-        ma_uint64 iSample;
-        ma_uint64 framesReadThisIteration;
-        ma_uint32 totalFramesRemaining = frameCount - totalFramesRead;
-        ma_uint32 framesToReadThisIteration = tempCapInFrames;
-        if (framesToReadThisIteration > totalFramesRemaining) {
-            framesToReadThisIteration = totalFramesRemaining;
-        }
-
-        //get chunk of data into "temp"
-        result = ma_decoder_read_pcm_frames(pDecoder, temp, framesToReadThisIteration, &framesReadThisIteration);
-        if (result != MA_SUCCESS || framesReadThisIteration == 0) {
-            break;
-        }
-
-        /* Mix the frames together. */
-        for (iSample = 0; iSample < framesReadThisIteration * channelCount; ++iSample) {
-            pOutputF32[totalFramesRead * channelCount + iSample] += temp[iSample];
-        }
-
-        totalFramesRead += (ma_uint32)framesReadThisIteration;
-
-        if (framesReadThisIteration < (ma_uint32)framesToReadThisIteration) {
-            break;  /* Reached EOF. */
-        }
-    }
-
-    return totalFramesRead;
-}
-
-void threadHelper(void* pOutput, ma_uint32 frameCount)
-{
-    ma_node_graph_read_pcm_frames(&nodeGraph, pOutput, frameCount, NULL);
-}
-
 void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
 {
-    // In playback mode copy data to pOutput. In capture mode read data from pInput. In full-duplex mode, both
-    // pOutput and pInput will be valid and you can move data from pInput into pOutput. Never process more than
-    // frameCount frames.
-    
-    //ma_decoder* pDecoder = (ma_decoder*)pDevice->pUserData;
+    ma_node_graph* nodeGraph = (ma_node_graph*)pDevice->pUserData;
 
-    //float temp[4096];
-    //float* pOutputF32 = (float*)pOutput;
-    //
-    //std::vector<ma_decoder> pDecoderList = *(std::vector<ma_decoder>*)pDevice->pUserData;
-    //if (!pDecoderList.data()) {
-    //    return;
-    //}
-    //
-    //for (int i = 0; i < pDecoderList.size(); i++)
-    //{
-    //    read_and_mix_pcm_frames_f32(pDevice, &pDecoderList[i], pOutputF32, frameCount);
-    //}
-
-    ma_node_graph_read_pcm_frames(&nodeGraph, pOutput, frameCount, NULL);
-    //std::thread t(threadHelper, pOutput, frameCount);
-    //t.join();
+    ma_node_graph_read_pcm_frames(nodeGraph, pOutput, frameCount, NULL);
 
     (void)pInput;
 }
@@ -296,14 +223,12 @@ struct DeviceManager
     ma_device device1;
     ma_device device2;
 
-    std::vector<ma_decoder> pDecoders1;
-    std::vector<ma_decoder> pDecoders2;
+    ma_node_graph node_graph1;
+    ma_node_graph node_graph2;
 
-    //ma_node_graph node_graph;
+    ma_splitter_node splitterNode;
 
-    std::vector<sound_node*> nodes1;
-    std::vector<sound_node> nodes2;
-    sound_node* g_pSoundNodes;
+    std::vector<sound_node*> nodes;
 
     DeviceManager()
     {
@@ -334,7 +259,7 @@ struct DeviceManager
         config_device1.playback.channels = 2;               // Set to 0 to use the device's native channel count.
         config_device1.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
         config_device1.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-        //config_device1.pUserData = &pDecoders1;   // Can be accessed from the device object (device.pUserData).
+        config_device1.pUserData = &node_graph1;   // Can be accessed from the device object (device.pUserData).
 
         ma_device_config config_device2 = ma_device_config_init(ma_device_type_playback);
         config_device2.playback.pDeviceID = &pPlaybackInfos[0].id;
@@ -342,7 +267,7 @@ struct DeviceManager
         config_device2.playback.channels = 2;               // Set to 0 to use the device's native channel count.
         config_device2.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
         config_device2.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-        //config_device2.pUserData = &pDecoders2;   // Can be accessed from the device object (device.pUserData).
+        config_device2.pUserData = &node_graph2;   // Can be accessed from the device object (device.pUserData).
 
         if (ma_device_init(NULL, &config_device1, &device1) != MA_SUCCESS ||
             ma_device_init(NULL, &config_device2, &device2) != MA_SUCCESS) {
@@ -355,22 +280,21 @@ struct DeviceManager
 
         ma_node_graph_config nodeGraphConfig = ma_node_graph_config_init(2);
 
-        ma_node_graph_init(&nodeGraphConfig, NULL, &nodeGraph);
+        ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph1);
+        ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph2);
 
 
         /* Splitter. */
         {
             ma_splitter_node_config splitterNodeConfig = ma_splitter_node_config_init(CHANNELS);
-
-            if (ma_splitter_node_init(&nodeGraph, &splitterNodeConfig, NULL, &splitterNode) != MA_SUCCESS) {
+        
+            if (ma_splitter_node_init(&node_graph1, &splitterNodeConfig, NULL, &splitterNode) != MA_SUCCESS) {
                 printf("ERROR: Failed to initialize splitter node.");
                 return;
             }
-
-            /* Connect output bus 0 to the input bus of the low pass filter node, and output bus 1 to the input bus of the delay node. */
-            //ma_node_attach_output_bus(&splitterNode, 0, &g_lpfNode, 0);
-            //ma_node_attach_output_bus(&splitterNode, 1, &g_delayNode, 0);
-            //ma_node_attach_output_bus(&splitterNode, 0, ma_node_graph_get_endpoint(&nodeGraph), 0);
+        
+            ma_node_attach_output_bus(&splitterNode, 0, ma_node_graph_get_endpoint(&node_graph1), 0);
+            ma_node_attach_output_bus(&splitterNode, 1, ma_node_graph_get_endpoint(&node_graph2), 0);
         }
         
     }
@@ -379,14 +303,14 @@ struct DeviceManager
     {
         ma_device_uninit(&device1);
         ma_device_uninit(&device2);
-        pDecoders1.clear();
-        pDecoders2.clear();
+        for(int i = 0; i < nodes.size(); i++)
+            delete(nodes[i]);
     }
 
     void start()
     {
         ma_device_start(&device1);
-        //ma_device_start(&device2);
+        ma_device_start(&device2);
     }
 
     void stop()
@@ -399,45 +323,29 @@ struct DeviceManager
     {
         ma_device_stop(&device1);
         ma_device_stop(&device2);
-        pDecoders1.clear();
-        pDecoders2.clear();
+        for (int i = 0; i < nodes.size(); i++)
+            ma_node_detach_all_output_buses(&nodes[0]->node);
     }
 
-    int g_soundNodeCount = 0;
     void addSound(std::string path)
     {
-        ma_decoder decoder1;
-        ma_decoder decoder2;
-        //if (ma_decoder_init_file(path.c_str(), NULL, &decoder1) != MA_SUCCESS 
-        //    || ma_decoder_init_file(path.c_str(), NULL, &decoder2) != MA_SUCCESS
-        //    )
-        //{
-        //    printf("ERROR: Failed to init Decoder in DeviceManager struct");
-        //    return;
-        //}
+        nodes.push_back(new sound_node());
 
-        nodes1.push_back(new sound_node());
+        ma_decoder_init_file(path.c_str(), NULL, &nodes[nodes.size() - 1]->decoder);
 
-        ma_decoder_init_file(path.c_str(), NULL, &nodes1[nodes1.size() - 1]->decoder);
-
-        ma_data_source_node_config dataSourceNodeConfig = ma_data_source_node_config_init(&nodes1[nodes1.size() - 1]->decoder);
+        ma_data_source_node_config dataSourceNodeConfig1 = ma_data_source_node_config_init(&nodes[nodes.size() - 1]->decoder);
         
-        if (ma_data_source_node_init(&nodeGraph, &dataSourceNodeConfig, NULL, &nodes1[nodes1.size() - 1]->node) != MA_SUCCESS)
+        if (ma_data_source_node_init(&node_graph1, &dataSourceNodeConfig1, NULL, &nodes[nodes.size() - 1]->node) != MA_SUCCESS)
         {
             printf("ERROR: Failed to init source node in DeviceManager struct");
             return;
         }
         
-        if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1]->node, 0, ma_node_graph_get_endpoint(&nodeGraph), 0) != MA_SUCCESS)
-            //if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1].node, 0, &splitterNode, 0) != MA_SUCCESS)
+        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &splitterNode, 0) != MA_SUCCESS)
         {
             printf("ERROR: Failed to attach in DeviceManager struct");
             return;
         }
-       
-
-        //pDecoders1.push_back(decoder1);
-        //pDecoders2.push_back(decoder2);
     }
 };
 
@@ -448,8 +356,8 @@ int main()
     device.addSound("eple.mp3");
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     device.addSound("afloat.mp3");
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    ma_node_detach_all_output_buses(&device.nodes1[0]->node);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    device.clear();
 
 
     while (1);
