@@ -71724,7 +71724,11 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
         return MA_SUCCESS;  /* No attachments. Read nothing. */
     }
 
+    int counter = 0;
     for (pOutputBus = pFirst; pOutputBus != NULL; pOutputBus = ma_node_input_bus_next(pInputBus, pOutputBus)) {
+        
+        if (counter == 0)
+            int a = 0;
         ma_uint32 framesProcessed = 0;
         ma_bool32 isSilentOutput = MA_FALSE;
 
@@ -71788,6 +71792,7 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
             /* Seek. */
             ma_node_read_pcm_frames(pOutputBus->pNode, pOutputBus->outputBusIndex, NULL, frameCount, &framesProcessed, globalTime);
         }
+        counter++;
     }
 
     /* If we didn't output anything, output silence. */
@@ -72913,6 +72918,7 @@ static void ma_data_source_node_process_pcm_frames(ma_node* pNode, const float**
     MA_ASSERT(frameCount > 0);
 
     if (ma_data_source_get_data_format(pDataSourceNode->pDataSource, &format, &channels, NULL, NULL, 0) == MA_SUCCESS) { /* <-- Don't care about sample rate here. */
+        
         /* The node graph system requires samples be in floating point format. This is checked in ma_data_source_node_init(). */
         MA_ASSERT(format == ma_format_f32);
         (void)format;   /* Just to silence some static analysis tools. */
