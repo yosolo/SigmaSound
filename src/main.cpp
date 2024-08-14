@@ -201,50 +201,6 @@
 //    return 0;
 //}
 
-
-//----------------------------------------customeNode
-typedef struct {
-    ma_node_base baseNode;
-    // Eigene Daten wie ein Float-Buffer oder andere Zustandsinformationen
-    float* pFloatBuffer;
-    ma_uint32 bufferSize;
-    ma_uint32 cursor;
-    ma_uint32 channels;
-} my_custom_node;
-
-//void my_custom_node_process(ma_node* pNode, float** ppFramesOut, const float** ppFramesIn, ma_uint64 frameCount) 
-void my_custom_node_process(ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn, float** ppFramesOut, ma_uint32* pFrameCountOut)
-{
-    my_custom_node* pMyNode = (my_custom_node*)pNode;
-
-    for (ma_uint64 i = 0; i < 100; i++) {
-        for (ma_uint32 channel = 0; channel < pMyNode->channels; channel++) {
-            ppFramesOut[channel][i] = pMyNode->pFloatBuffer[pMyNode->cursor * pMyNode->channels + channel];
-        }
-        pMyNode->cursor = (pMyNode->cursor + 1) % pMyNode->bufferSize;
-    }
-}
-
-//ma_node_vtable my_custom_node_vtable = {
-//    (ma_node_process_proc)my_custom_node_process,
-//    NULL,  // Optional: Funktion zur Zerstörung des Nodes
-//    1,     // Anzahl der Eingabepins
-//    1      // Anzahl der Ausgabepins
-//};
-//
-//void init_my_custom_node(my_custom_node* pMyNode, ma_node_graph* pGraph, float* pBuffer, ma_uint32 bufferSize, ma_uint32 channels) {
-//    ma_node_config config = ma_node_config_init();
-//    //config.outputChannels[0] = channels;
-//    config.vtable = &my_custom_node_vtable;
-//
-//    ma_node_init(pGraph, &config, NULL, &pMyNode->baseNode);
-//
-//    pMyNode->pFloatBuffer = pBuffer;
-//    pMyNode->bufferSize = bufferSize;
-//    pMyNode->cursor = 0;
-//}
-//----------------------------------------customeNode
-
 typedef struct
 {
     ma_data_source_node node;   /* If you make this the first member, you can pass a pointer to this struct into any ma_node_* API and it will "Just Work". */
@@ -253,7 +209,8 @@ typedef struct
 
 ma_node_graph nodeGraph;
 ma_splitter_node splitterNode;
-std::vector<sound_node> sound_nodes;
+//std::vector<sound_node*> sound_nodes;
+//static sound_node* g_pSoundNodes;
 
 ma_uint32 read_and_mix_pcm_frames_f32(ma_device* pDevice, ma_decoder* pDecoder, float* pOutputF32, ma_uint32 frameCount)
 {
@@ -344,8 +301,9 @@ struct DeviceManager
 
     //ma_node_graph node_graph;
 
-    std::vector<sound_node> nodes1;
+    std::vector<sound_node*> nodes1;
     std::vector<sound_node> nodes2;
+    sound_node* g_pSoundNodes;
 
     DeviceManager()
     {
@@ -376,7 +334,7 @@ struct DeviceManager
         config_device1.playback.channels = 2;               // Set to 0 to use the device's native channel count.
         config_device1.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
         config_device1.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-        config_device1.pUserData = &pDecoders1;   // Can be accessed from the device object (device.pUserData).
+        //config_device1.pUserData = &pDecoders1;   // Can be accessed from the device object (device.pUserData).
 
         ma_device_config config_device2 = ma_device_config_init(ma_device_type_playback);
         config_device2.playback.pDeviceID = &pPlaybackInfos[0].id;
@@ -384,7 +342,7 @@ struct DeviceManager
         config_device2.playback.channels = 2;               // Set to 0 to use the device's native channel count.
         config_device2.sampleRate = 44100;           // Set to 0 to use the device's native sample rate.
         config_device2.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
-        config_device2.pUserData = &pDecoders2;   // Can be accessed from the device object (device.pUserData).
+        //config_device2.pUserData = &pDecoders2;   // Can be accessed from the device object (device.pUserData).
 
         if (ma_device_init(NULL, &config_device1, &device1) != MA_SUCCESS ||
             ma_device_init(NULL, &config_device2, &device2) != MA_SUCCESS) {
@@ -445,60 +403,38 @@ struct DeviceManager
         pDecoders2.clear();
     }
 
+    int g_soundNodeCount = 0;
     void addSound(std::string path)
     {
         ma_decoder decoder1;
         ma_decoder decoder2;
-        if (ma_decoder_init_file(path.c_str(), NULL, &decoder1) != MA_SUCCESS 
-            || ma_decoder_init_file(path.c_str(), NULL, &decoder2) != MA_SUCCESS
-            )
+        //if (ma_decoder_init_file(path.c_str(), NULL, &decoder1) != MA_SUCCESS 
+        //    || ma_decoder_init_file(path.c_str(), NULL, &decoder2) != MA_SUCCESS
+        //    )
+        //{
+        //    printf("ERROR: Failed to init Decoder in DeviceManager struct");
+        //    return;
+        //}
+
+        nodes1.push_back(new sound_node());
+
+        ma_decoder_init_file(path.c_str(), NULL, &nodes1[nodes1.size() - 1]->decoder);
+
+        ma_data_source_node_config dataSourceNodeConfig = ma_data_source_node_config_init(&nodes1[nodes1.size() - 1]->decoder);
+        
+        if (ma_data_source_node_init(&nodeGraph, &dataSourceNodeConfig, NULL, &nodes1[nodes1.size() - 1]->node) != MA_SUCCESS)
         {
-            printf("ERROR: Failed to init Decoder in DeviceManager struct");
+            printf("ERROR: Failed to init source node in DeviceManager struct");
             return;
         }
-
-       //sound_node a;
-       //a.decoder = decoder1;
-       nodes1.push_back(sound_node());
-       nodes1[nodes1.size() - 1].decoder = decoder1;
-
-
-
-       ma_data_source_node_config dataSourceNodeConfig = ma_data_source_node_config_init(&nodes1[nodes1.size() - 1].decoder);
-
-       if (ma_data_source_node_init(&nodeGraph, &dataSourceNodeConfig, NULL, &nodes1[nodes1.size() - 1].node) != MA_SUCCESS)
-       {
-           printf("ERROR: Failed to init source node in DeviceManager struct");
-           return;
-       }
-
-       if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1].node, 0, ma_node_graph_get_endpoint(&nodeGraph), 0) != MA_SUCCESS)
-       //if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1].node, 0, &splitterNode, 0) != MA_SUCCESS)
-       {
-           printf("ERROR: Failed to attach in DeviceManager struct");
-           return;
-       }
-
-
-       //nodes1.push_back(sound_node());
-       //nodes1[nodes1.size() - 1].decoder = decoder2;
-
-
-
-       //dataSourceNodeConfig = ma_data_source_node_config_init(&nodes1[nodes1.size() - 1].decoder);
-       //
-       //if (ma_data_source_node_init(&nodeGraph, &dataSourceNodeConfig, NULL, &nodes1[nodes1.size() - 1].node) != MA_SUCCESS)
-       //{
-       //    printf("ERROR: Failed to init source node in DeviceManager struct");
-       //    return;
-       //}
-
-
-       //if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1].node, 0, &splitterNode, 0) != MA_SUCCESS)
-       //{
-       //    printf("ERROR: Failed to attach in DeviceManager struct");
-       //    return;
-       //}
+        
+        if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1]->node, 0, ma_node_graph_get_endpoint(&nodeGraph), 0) != MA_SUCCESS)
+            //if (ma_node_attach_output_bus(&nodes1[nodes1.size() - 1].node, 0, &splitterNode, 0) != MA_SUCCESS)
+        {
+            printf("ERROR: Failed to attach in DeviceManager struct");
+            return;
+        }
+       
 
         //pDecoders1.push_back(decoder1);
         //pDecoders2.push_back(decoder2);
@@ -510,8 +446,10 @@ int main()
     DeviceManager device;
     device.start();
     device.addSound("eple.mp3");
-    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     device.addSound("afloat.mp3");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    ma_node_detach_all_output_buses(&device.nodes1[0]->node);
 
 
     while (1);
