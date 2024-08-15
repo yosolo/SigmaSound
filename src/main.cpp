@@ -235,18 +235,26 @@ struct DeviceManager
 {
     ma_context context;
 
+    //output devices
     ma_device device1;
     ma_device device2;
-
+    
+    //input devices
     ma_device device_in_spotify;
     ma_device device_in_microphone;
 
+    //nodegraphs for device 1,2
     ma_node_graph node_graph1;
     ma_node_graph node_graph2;
 
-    ma_splitter_node splitterNode;
-    ma_lpf_node      lpfNode;
 
+    //nodes
+    ma_splitter_node splitterNode;
+    ma_lpf_node      lpfNode_sound;
+    ma_lpf_node      lpfNode_microphone;
+
+
+    //input node/data to get input into an node graph
     ma_audio_buffer_ref exciteData_spotify;
     ma_audio_buffer_ref exciteData_microphone;
     
@@ -342,7 +350,7 @@ struct DeviceManager
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph2);
 
 #define LPF_BIAS            0.9f    /* Higher values means more bias towards the low pass filter (the low pass filter will be more audible). Lower values means more bias towards the echo. Must be between 0 and 1. */
-#define LPF_CUTOFF_FACTOR   80      /* High values = more filter. */
+#define LPF_CUTOFF_FACTOR   10      /* High values = more filter. */
 #define LPF_ORDER           8
 
         /* Splitter. */
@@ -362,16 +370,32 @@ struct DeviceManager
         {
             ma_lpf_node_config lpfNodeConfig = ma_lpf_node_config_init(CHANNELS, SAMPLE_RATE, SAMPLE_RATE / LPF_CUTOFF_FACTOR, LPF_ORDER);
 
-            if (ma_lpf_node_init(&node_graph1, &lpfNodeConfig, NULL, &lpfNode) != MA_SUCCESS) {
+            if (ma_lpf_node_init(&node_graph1, &lpfNodeConfig, NULL, &lpfNode_sound) != MA_SUCCESS) {
                 printf("ERROR: Failed to initialize low pass filter node.");
                 return;
             }
 
             /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
-            ma_node_attach_output_bus(&lpfNode, 0, &splitterNode, 0);
+            ma_node_attach_output_bus(&lpfNode_sound, 0, &splitterNode, 0);
 
             /* Set the volume of the low pass filter to make it more of less impactful. */
-            ma_node_set_output_bus_volume(&lpfNode, 0, LPF_BIAS);
+            ma_node_set_output_bus_volume(&lpfNode_sound, 0, LPF_BIAS);
+        }
+
+        /* Low Pass Filter. */
+        {
+            ma_lpf_node_config lpfNodeConfig = ma_lpf_node_config_init(CHANNELS, SAMPLE_RATE, SAMPLE_RATE / LPF_CUTOFF_FACTOR, LPF_ORDER);
+
+            if (ma_lpf_node_init(&node_graph1, &lpfNodeConfig, NULL, &lpfNode_microphone) != MA_SUCCESS) {
+                printf("ERROR: Failed to initialize low pass filter node.");
+                return;
+            }
+
+            /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
+            ma_node_attach_output_bus(&lpfNode_microphone, 0, ma_node_graph_get_endpoint(&node_graph2), 0);
+
+            /* Set the volume of the low pass filter to make it more of less impactful. */
+            ma_node_set_output_bus_volume(&lpfNode_microphone, 0, LPF_BIAS);
         }
 
         //----------------------------------------------------------------------------Spotify
@@ -386,7 +410,7 @@ struct DeviceManager
             printf("Failed to initialize source node.");
             return;
         }
-        ma_node_attach_output_bus(&exciteNode_spotify, 0, &lpfNode, 0);
+        ma_node_attach_output_bus(&exciteNode_spotify, 0, &lpfNode_sound, 0);
 
         //----------------------------------------------------------------------------MIC
 
@@ -400,7 +424,7 @@ struct DeviceManager
             printf("Failed to initialize source node.");
             return;
         }
-        ma_node_attach_output_bus(&exciteNode_microphone, 0, ma_node_graph_get_endpoint(&node_graph2), 0);
+        ma_node_attach_output_bus(&exciteNode_microphone, 0, &lpfNode_microphone, 0);
         
     }
 
@@ -453,7 +477,7 @@ struct DeviceManager
             return;
         }
         
-        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &lpfNode, 0) != MA_SUCCESS)
+        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &lpfNode_sound, 0) != MA_SUCCESS)
         {
             printf("ERROR: Failed to attach in DeviceManager struct");
             return;
