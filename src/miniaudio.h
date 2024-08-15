@@ -71724,11 +71724,8 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
         return MA_SUCCESS;  /* No attachments. Read nothing. */
     }
 
-    int counter = 0;
     for (pOutputBus = pFirst; pOutputBus != NULL; pOutputBus = ma_node_input_bus_next(pInputBus, pOutputBus)) {
         
-        if (counter == 0)
-            int a = 0;
         ma_uint32 framesProcessed = 0;
         ma_bool32 isSilentOutput = MA_FALSE;
 
@@ -71792,7 +71789,6 @@ static ma_result ma_node_input_bus_read_pcm_frames(ma_node* pInputNode, ma_node_
             /* Seek. */
             ma_node_read_pcm_frames(pOutputBus->pNode, pOutputBus->outputBusIndex, NULL, frameCount, &framesProcessed, globalTime);
         }
-        counter++;
     }
 
     /* If we didn't output anything, output silence. */
