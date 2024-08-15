@@ -243,8 +243,6 @@ struct DeviceManager
 
     ma_node_graph node_graph1;
     ma_node_graph node_graph2;
-    ma_node_graph node_graph3;
-    ma_node_graph node_graph4;
 
     ma_splitter_node splitterNode;
     ma_lpf_node      lpfNode;
@@ -342,8 +340,6 @@ struct DeviceManager
 
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph1);
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph2);
-        //ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph3);
-        //ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph4);
 
 #define LPF_BIAS            0.9f    /* Higher values means more bias towards the low pass filter (the low pass filter will be more audible). Lower values means more bias towards the echo. Must be between 0 and 1. */
 #define LPF_CUTOFF_FACTOR   80      /* High values = more filter. */
@@ -360,8 +356,6 @@ struct DeviceManager
         
             ma_node_attach_output_bus(&splitterNode, 0, ma_node_graph_get_endpoint(&node_graph1), 0);
             ma_node_attach_output_bus(&splitterNode, 1, ma_node_graph_get_endpoint(&node_graph2), 0);
-            //ma_node_attach_output_bus(&splitterNode, 2, ma_node_graph_get_endpoint(&node_graph3), 0);
-            //ma_node_attach_output_bus(&splitterNode, 3, ma_node_graph_get_endpoint(&node_graph4), 0);
         }
 
         /* Low Pass Filter. */
