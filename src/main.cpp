@@ -207,6 +207,51 @@ typedef struct
     ma_decoder decoder;
 } sound_node;
 
+typedef struct
+{
+    ma_node_base base;
+    float amplitude;
+} custom_node;
+
+static void custom_node_process_pcm_frames(ma_node* pInNode, const float** ppFramesIn, ma_uint32* pFrameCountIn, float** ppFramesOut, ma_uint32* pFrameCountOut)
+{
+    custom_node* pNode = (custom_node*)pInNode;
+
+    // Do some processing of ppFramesIn (one stream of audio data per input bus)
+    const float* pFramesIn_0 = ppFramesIn[0]; // Input bus @ index 0.
+    float* pFramesOut_0 = ppFramesOut[0];     // Output bus @ index 0.
+
+    // Do some processing. On input, pFrameCountIn will be the number of input frames in each
+    // buffer in ppFramesIn and pFrameCountOut will be the capacity of each of the buffers
+    // in ppFramesOut. On output, pFrameCountIn should be set to the number of input frames
+    // your node consumed and pFrameCountOut should be set the number of output frames that
+    // were produced.
+    //
+    // You should process as many frames as you can. If your effect consumes input frames at the
+    // same rate as output frames (always the case, unless you're doing resampling), you need
+    // only look at ppFramesOut and process that exact number of frames. If you're doing
+    // resampling, you'll need to be sure to set both pFrameCountIn and pFrameCountOut
+    // properly.
+
+    MA_ASSERT(pFrameCountIn[0] == pFrameCountOut[0]);
+
+    ma_uint32 channels = ma_node_get_input_channels(pInNode, 0);
+
+    for (int i = 0; i < pFrameCountIn[0] * channels; i++)
+    {
+        pFramesOut_0[i] = pFramesIn_0[i] * pNode->amplitude;
+    }
+}
+
+static ma_node_vtable custom_node_vtable =
+{
+    custom_node_process_pcm_frames,
+    NULL,
+    1, // 1 input bus.
+    1, // 1 output bus.
+    0
+};
+
 void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
 {
     if (pDevice->type == ma_device_type_playback)
@@ -252,6 +297,7 @@ struct DeviceManager
     ma_splitter_node splitterNode;
     ma_lpf_node      lpfNode_sound;
     ma_lpf_node      lpfNode_microphone;
+    custom_node      customNode;
 
 
     //input node/data to get input into an node graph
@@ -358,6 +404,28 @@ struct DeviceManager
 #define LPF_CUTOFF_FACTOR   2      /* High values = more filter. */
 #define LPF_ORDER           8
 
+        /* Custom node */
+        {
+            ma_uint32 inputChannels[1];     // Equal in size to the number of input channels specified in the vtable.
+            ma_uint32 outputChannels[1];
+
+            inputChannels[0] = 2;
+            outputChannels[0] = 2;
+
+            ma_node_config customNodeConfig = ma_node_config_init();
+            customNodeConfig.vtable = &custom_node_vtable;
+            customNodeConfig.pInputChannels = inputChannels;
+            customNodeConfig.pOutputChannels = outputChannels;
+
+            if (ma_node_init(&node_graph1, &customNodeConfig, NULL, &customNode) != MA_SUCCESS)
+            {
+                printf("ERROR: Failed to initialize custom node.");
+                return;
+            }
+
+            ma_node_attach_output_bus(&customNode, 0, ma_node_graph_get_endpoint(&node_graph1), 0);
+        }
+
         /* Splitter. */
         {
             ma_splitter_node_config splitterNodeConfig = ma_splitter_node_config_init(CHANNELS);
@@ -367,7 +435,7 @@ struct DeviceManager
                 return;
             }
         
-            ma_node_attach_output_bus(&splitterNode, 0, ma_node_graph_get_endpoint(&node_graph1), 0);
+            ma_node_attach_output_bus(&splitterNode, 0, &customNode, 0);
             ma_node_attach_output_bus(&splitterNode, 1, ma_node_graph_get_endpoint(&node_graph2), 0);
         }
 
@@ -381,7 +449,7 @@ struct DeviceManager
             }
 
             /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
-            //ma_node_attach_output_bus(&lpfNode_sound, 0, &splitterNode, 0);
+            ma_node_attach_output_bus(&lpfNode_sound, 0, &splitterNode, 0);
 
             /* Set the volume of the low pass filter to make it more of less impactful. */
             ma_node_set_output_bus_volume(&lpfNode_sound, 0, LPF_BIAS);
@@ -484,7 +552,7 @@ struct DeviceManager
             return;
         }
         
-        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &splitterNode, 0) != MA_SUCCESS)
+        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &lpfNode_sound, 0) != MA_SUCCESS)
         {
             printf("ERROR: Failed to attach in DeviceManager struct");
             return;
@@ -505,7 +573,13 @@ int main()
     //ma_lpf_config lpfNodeConfig = ma_lpf_config_init(FORMAT, CHANNELS, SAMPLE_RATE, SAMPLE_RATE / 2, LPF_ORDER);
     //ma_lpf_node_reinit(&lpfNodeConfig, &device.lpfNode_microphone);
 
-    while (1);
+    float counter = 1.0f;
+    while (1)
+    {
+        device.customNode.amplitude = counter;
+        Sleep(100);
+        // counter += 0.001f;
+    }
 
     return 0;
 }
