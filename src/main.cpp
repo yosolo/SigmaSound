@@ -215,12 +215,12 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
         ma_node_graph_read_pcm_frames(nodeGraph, pOutput, frameCount, NULL);
     }
 
-    if (pDevice->type == ma_device_type_duplex)
+    if (pDevice->type == ma_device_type_capture)
     {
         ma_audio_buffer_ref* exciteData = (ma_audio_buffer_ref*)pDevice->pUserData;
 
-        MA_ASSERT(pDevice->capture.format == pDevice->playback.format);
-        MA_ASSERT(pDevice->capture.channels == pDevice->playback.channels);
+        //MA_ASSERT(pDevice->capture.format == pDevice->playback.format);
+        //MA_ASSERT(pDevice->capture.channels == pDevice->playback.channels);
     
         /* In this example the format and channel count are the same for both input and output which means we can just memcpy(). */
         //MA_COPY_MEMORY(pOutput, pInput, frameCount * ma_get_bytes_per_frame(pDevice->capture.format, pDevice->capture.channels));
@@ -265,6 +265,9 @@ struct DeviceManager
 
     DeviceManager()
     {
+        ma_context_config context_config;
+        //context_config.threadPriority = ma_thread_priority_realtime;
+        context_config.threadPriority = ma_thread_priority_idle;
         if (ma_context_init(NULL, 0, NULL, &context) != MA_SUCCESS) 
         {
             printf("Failed to initialize devices in DeviceManager struct");
@@ -306,26 +309,28 @@ struct DeviceManager
         config_device2.dataCallback = data_callback;   // This function will be called when miniaudio needs more data.
         config_device2.pUserData = &node_graph2;   // Can be accessed from the device object (device.pUserData).
 
-        ma_device_config config_device_in_spotify = ma_device_config_init(ma_device_type_duplex);
-        config_device_in_spotify.capture.pDeviceID = &pCaptureInfos[1].id;;
+        //ma_device_config config_device_in_spotify = ma_device_config_init(ma_device_type_duplex);
+        ma_device_config config_device_in_spotify = ma_device_config_init(ma_device_type_capture);
+        config_device_in_spotify.capture.pDeviceID = &pCaptureInfos[1].id;
         config_device_in_spotify.capture.format = ma_format_f32;
         config_device_in_spotify.capture.channels = 2;
-        config_device_in_spotify.capture.shareMode = ma_share_mode_shared;
-        config_device_in_spotify.playback.pDeviceID = &pPlaybackInfos[4].id;
-        config_device_in_spotify.playback.format = ma_format_f32;
-        config_device_in_spotify.playback.channels = 2;
+        //config_device_in_spotify.capture.shareMode = ma_share_mode_shared;
+        //config_device_in_spotify.playback.pDeviceID = &pPlaybackInfos[4].id;
+        //config_device_in_spotify.playback.format = ma_format_f32;
+        //config_device_in_spotify.playback.channels = 2;
         config_device_in_spotify.dataCallback = data_callback;  
         config_device_in_spotify.sampleRate = 44100;   
         config_device_in_spotify.pUserData = &exciteData_spotify;
 
-        ma_device_config config_device_in_microphone = ma_device_config_init(ma_device_type_duplex);
+        //ma_device_config config_device_in_microphone = ma_device_config_init(ma_device_type_duplex);
+        ma_device_config config_device_in_microphone = ma_device_config_init(ma_device_type_capture);
         config_device_in_microphone.capture.pDeviceID = &pCaptureInfos[0].id;
         config_device_in_microphone.capture.format = ma_format_f32;
         config_device_in_microphone.capture.channels = 2;
-        config_device_in_microphone.capture.shareMode = ma_share_mode_shared;
-        config_device_in_microphone.playback.pDeviceID = &pPlaybackInfos[4].id;
-        config_device_in_microphone.playback.format = ma_format_f32;
-        config_device_in_microphone.playback.channels = 2;
+        //config_device_in_microphone.capture.shareMode = ma_share_mode_shared;
+        //config_device_in_microphone.playback.pDeviceID = &pPlaybackInfos[4].id;
+        //config_device_in_microphone.playback.format = ma_format_f32;
+        //config_device_in_microphone.playback.channels = 2;
         config_device_in_microphone.dataCallback = data_callback;
         config_device_in_microphone.sampleRate = 44100;
         config_device_in_microphone.pUserData = &exciteData_microphone;
@@ -349,8 +354,8 @@ struct DeviceManager
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph1);
         ma_node_graph_init(&nodeGraphConfig, NULL, &node_graph2);
 
-#define LPF_BIAS            0.9f    /* Higher values means more bias towards the low pass filter (the low pass filter will be more audible). Lower values means more bias towards the echo. Must be between 0 and 1. */
-#define LPF_CUTOFF_FACTOR   10      /* High values = more filter. */
+#define LPF_BIAS            0.4f    /* Higher values means more bias towards the low pass filter (the low pass filter will be more audible). Lower values means more bias towards the echo. Must be between 0 and 1. */
+#define LPF_CUTOFF_FACTOR   2      /* High values = more filter. */
 #define LPF_ORDER           8
 
         /* Splitter. */
@@ -376,7 +381,7 @@ struct DeviceManager
             }
 
             /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
-            ma_node_attach_output_bus(&lpfNode_sound, 0, &splitterNode, 0);
+            //ma_node_attach_output_bus(&lpfNode_sound, 0, &splitterNode, 0);
 
             /* Set the volume of the low pass filter to make it more of less impactful. */
             ma_node_set_output_bus_volume(&lpfNode_sound, 0, LPF_BIAS);
@@ -392,7 +397,7 @@ struct DeviceManager
             }
 
             /* Connect the output bus of the low pass filter node to the input bus of the endpoint. */
-            ma_node_attach_output_bus(&lpfNode_microphone, 0, ma_node_graph_get_endpoint(&node_graph2), 0);
+            //ma_node_attach_output_bus(&lpfNode_microphone, 0, ma_node_graph_get_endpoint(&node_graph2), 0);
 
             /* Set the volume of the low pass filter to make it more of less impactful. */
             ma_node_set_output_bus_volume(&lpfNode_microphone, 0, LPF_BIAS);
@@ -410,7 +415,8 @@ struct DeviceManager
             printf("Failed to initialize source node.");
             return;
         }
-        ma_node_attach_output_bus(&exciteNode_spotify, 0, &lpfNode_sound, 0);
+        //ma_node_attach_output_bus(&exciteNode_spotify, 0, &lpfNode_sound, 0);
+        ma_node_attach_output_bus(&exciteNode_spotify, 0, &splitterNode, 0);
 
         //----------------------------------------------------------------------------MIC
 
@@ -424,7 +430,8 @@ struct DeviceManager
             printf("Failed to initialize source node.");
             return;
         }
-        ma_node_attach_output_bus(&exciteNode_microphone, 0, &lpfNode_microphone, 0);
+        //ma_node_attach_output_bus(&exciteNode_microphone, 0, &lpfNode_microphone, 0);
+        ma_node_attach_output_bus(&exciteNode_microphone, 0, ma_node_graph_get_endpoint(&node_graph2), 0);
         
     }
 
@@ -477,7 +484,7 @@ struct DeviceManager
             return;
         }
         
-        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &lpfNode_sound, 0) != MA_SUCCESS)
+        if (ma_node_attach_output_bus(&nodes[nodes.size() - 1]->node, 0, &splitterNode, 0) != MA_SUCCESS)
         {
             printf("ERROR: Failed to attach in DeviceManager struct");
             return;
@@ -489,11 +496,14 @@ int main()
 {
     DeviceManager device;
     device.start();
-    device.addSound("C:/Users/dave-/Dev/C++/SigmaSound/eple.mp3");
+    //device.addSound("C:/Users/dave-/Dev/C++/SigmaSound/eple.mp3");
     //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    //device.addSound("afloat.mp3");
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-    device.clear();
+    //device.addSound("C:/Users/dave-/Dev/C++/SigmaSound/afloat.mp3");
+    //std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    //device.clear();
+
+    //ma_lpf_config lpfNodeConfig = ma_lpf_config_init(FORMAT, CHANNELS, SAMPLE_RATE, SAMPLE_RATE / 2, LPF_ORDER);
+    //ma_lpf_node_reinit(&lpfNodeConfig, &device.lpfNode_microphone);
 
     while (1);
 
